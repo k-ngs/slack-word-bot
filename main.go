@@ -1,10 +1,13 @@
 package main
 
+// TODO: Porting AWS lambda and API gateway
+
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"time"
 
 	"github.com/slack-go/slack"
@@ -14,7 +17,7 @@ import (
 )
 
 type WordByMongo struct {
-	Id   string
+	Id   int
 	Word string
 }
 
@@ -36,7 +39,6 @@ type MongoConfig struct {
 	CollectionName string `json: "collectionName"`
 }
 
-// TODO: Test -> Random pick a word from MongoDB
 func (config *Config) getRandomWordByMongoDB() (word *WordByMongo, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -50,7 +52,13 @@ func (config *Config) getRandomWordByMongoDB() (word *WordByMongo, err error) {
 
 	col := client.Database(config.Mongo.DbName).Collection(config.Mongo.CollectionName)
 
-	err = col.FindOne(context.Background(), bson.M{"_id": ""}).Decode(&word)
+	count, err := col.CountDocuments(context.Background(), bson.M{})
+	rand.Seed(time.Now().UnixNano())
+	randomNum := rand.Int63n(count)
+	err = col.FindOne(context.Background(), bson.M{"id": randomNum}).Decode(&word)
+	if err != nil {
+		return nil, err
+	}
 
 	return
 }
@@ -125,11 +133,14 @@ func main() {
 		panic(err)
 	}
 
-	// TODO: Pick the word from MongoDB(use getRandomWordByMongoDB())
-	msg := "Test message"
+	// Pick a word from MongoDB
+	w, err := config.getRandomWordByMongoDB()
+	if err != nil {
+		panic(err)
+	}
 
 	// Post message to slack
-	err = config.handleSendPayload(msg)
+	err = config.handleSendPayload(w.Word)
 	if err != nil {
 		panic(err)
 	}
